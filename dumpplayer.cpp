@@ -213,7 +213,7 @@ int dumpPlayerInit(dumpPlayer *ctx, dumpPlayerCfg *cfg)
       return err;
    }
 
-   err = canSenderInit(&ctx->canSend, cfg->canDeviceName, cfg->canType ,cfg->canBitrate);
+   err = canSenderInit(&ctx->canSend, cfg->canDeviceName, cfg->canType);
    if(0 != err)
    {
       fprintf(stderr, "canSenderInit() failed(%s)\n", strerror(err));

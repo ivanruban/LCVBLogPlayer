@@ -31,8 +31,7 @@ typedef struct
    const char* addr; //RTP client IP address
    int port;         //client UDP port for RTP streaming
    uint32_t ssrc;    //RTP: Synchronization source identifier uniquely identifies the source of a stream
-   const char* canDeviceName; //like /dev/pcan-usb/0/can
-   int canBitrate;            //bitrate in kBit/s
+   const char* canDeviceName; //like can0
    canFrameType canType; //standard or extended CAN frames
    int rewind;       //if 1 - the log is rewind once end of file is reached
 }dumpPlayerCfg;

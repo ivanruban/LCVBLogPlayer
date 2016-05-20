@@ -2,7 +2,7 @@
  * Implements limited TRSP server(@see https://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol) trying to
  * simulate Panasonic wv-sp105 IP camera behavior.
  * It waits for a 'PLAY' request from a client and starts to playback the given RTP/CAN messages log.
- * Can and networks configuration items(like can device path, bitrate, network port/address to bind, etc)
+ * Can and networks configuration items(like can device name, network port/address to bind, etc)
  * are read from the cmd line arguments.
 */
 
@@ -20,12 +20,11 @@
 
 void usage(const char *name)
 {
-   printf("Usage: %s [-v] [-r] [-d can_device_path] [-b can_bitrate] [-t can_frame_type] "
+   printf("Usage: %s [-v] [-r] [-d can_device_path] [-t can_frame_type] "
            "[-p bind_port] [-i bind_addr] log_file\n"
            "  -v increase logging verbosity level\n"
            "  -r rewind log file once end of file is reached\n"
-           "  -d path to the can device to send a CAN message(default: /dev/pcan-usb/0/can)\n"
-           "  -b used can bitrate in kBit/s (default: 500)\n"
+           "  -d can device name to send a CAN message(default: can0)\n"
            "  -t std/ext - Standart/Extended CAN Frame (default: std)\n"
            "  -p port to listen for RTPS connection (default: 554)\n"
            "  -i ip address to bind (default: INADDR_ANY)\n"
@@ -57,7 +56,6 @@ struct playerCfg
    const char *logFile;
    int bindPort;
    const char* canDeviceName;
-   int canBitrate;
    canFrameType canType;
    int verbosity;
    int rewindLog;
@@ -213,8 +211,7 @@ int playCmdHandler (const char *data, const int size, int fd)
    }
 
    dumpPlayerCfg playerCfg = {configOptions.logFile, session.clientIp, (int)session.port1, session.ssrc
-         , configOptions.canDeviceName, configOptions.canBitrate, configOptions.canType
-         , configOptions.rewindLog
+         , configOptions.canDeviceName, configOptions.canType, configOptions.rewindLog
    };
 
    int err = dumpPlayerInit(&session.player, &playerCfg);
@@ -335,8 +332,7 @@ int main(int argc, char **argv)
 {
    configOptions.bindAddr = NULL;
    configOptions.bindPort = 554;
-   configOptions.canDeviceName = "/dev/pcan-usb/0/can";
-   configOptions.canBitrate = 500;
+   configOptions.canDeviceName = "can0";
    configOptions.canType = CAN_FRAME_STD_TYPE;
    configOptions.verbosity = 0;
    configOptions.rewindLog = 0;
@@ -360,9 +356,6 @@ int main(int argc, char **argv)
           break;
           case 'd':
              configOptions.canDeviceName = optarg;
-          break;
-          case 'b':
-             configOptions.canBitrate = atoi(optarg);
           break;
           case 't':
           {

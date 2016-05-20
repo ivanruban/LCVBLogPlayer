@@ -42,7 +42,7 @@ struct canEvent
 {
    uint32_t id;
    uint32_t len;   // count of data bytes (0..8)
-   uint8_t data[8];// count of data bytes (0..8)
+   uint8_t data[8];
 };
 
 #endif // _EVENT_LOG_H
