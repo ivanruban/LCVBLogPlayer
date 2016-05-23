@@ -45,4 +45,21 @@ struct canEvent
    uint8_t data[8];
 };
 
+/**
+ * RTP packet(PACKET_TYPE_RTP) header(@see https://en.wikipedia.org/wiki/Real-time_Transport_Protocol)
+ * followed by packet data.
+ */
+struct rtpHeader
+{
+   uint32_t cc:4;        /* CSRC count */
+   uint32_t x:1;         /* header extension flag */
+   uint32_t p:1;         /* padding flag */
+   uint32_t version:2;   /* protocol version */
+   uint32_t pt:7;        /* payload type */
+   uint32_t m:1;         /* marker bit */
+   uint32_t seq:16;      /* sequence number */
+   uint32_t ts;              /* timestamp */
+   uint32_t ssrc;            /* synchronization source */
+};
+
 #endif // _EVENT_LOG_H

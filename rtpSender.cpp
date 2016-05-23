@@ -18,25 +18,10 @@
 
 #include <time.h>
 
+#include "eventlog.h"
 #include "rtpSender.h"
 
 #define SWAP4(i)           (((i)<<24) | (((i)& 0x0000FF00)<<8) | (((i)& 0x00FF0000)>>8) | ((i)>>24) )
-
-/**
- * Describes RTP packet header(@see https://en.wikipedia.org/wiki/Real-time_Transport_Protocol)
- */
-struct rtpHeader
-{
-   uint32_t cc:4;        /* CSRC count */
-   uint32_t x:1;         /* header extension flag */
-   uint32_t p:1;         /* padding flag */
-   uint32_t version:2;   /* protocol version */
-   uint32_t pt:7;        /* payload type */
-   uint32_t m:1;         /* marker bit */
-   uint32_t seq:16;      /* sequence number */
-   uint32_t ts;              /* timestamp */
-   uint32_t ssrc;            /* synchronization source */
-};
 
 /**
  * Initializes UDP socket, convert the addr string to numeric representation.

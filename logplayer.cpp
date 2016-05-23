@@ -1,5 +1,5 @@
 /**
- * Implements limited TRSP server(@see https://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol) trying to
+ * Implements limited RTSP server(@see https://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol) trying to
  * simulate Panasonic wv-sp105 IP camera behavior.
  * It waits for a 'PLAY' request from a client and starts to playback the given RTP/CAN messages log.
  * Can and networks configuration items(like can device name, network port/address to bind, etc)
@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -337,6 +338,9 @@ int main(int argc, char **argv)
    configOptions.verbosity = 0;
    configOptions.rewindLog = 0;
 
+   //if set - don't start rtps server, but just streaming on the given address and port
+   bool forcePlayback = false;
+
    if (argc < 2)
    {
       usage(argv[0]);
@@ -344,10 +348,13 @@ int main(int argc, char **argv)
    }
 
    int opt;
-   while ((opt = getopt(argc, argv, "vrd:b:t:p:i:")) != -1)
+   while ((opt = getopt(argc, argv, "vrd:b:t:p:i:f")) != -1)
    {
        switch (opt)
        {
+          case 'f':
+             forcePlayback = true;
+          break;
           case 'v':
              configOptions.verbosity++;
           break;
@@ -382,6 +389,24 @@ int main(int argc, char **argv)
       return EXIT_FAILURE;
    }
    configOptions.logFile = argv[optind];
+
+   //it is debug feature for player performance testing with logdump/logcmp utilities
+   if(forcePlayback)
+   {
+      dumpPlayerCfg playerCfg = {configOptions.logFile, configOptions.bindAddr, configOptions.bindPort, 11223344
+            , configOptions.canDeviceName, configOptions.canType, configOptions.rewindLog
+      };
+
+      printf("Stream file %s to %s:%i\n", configOptions.logFile, configOptions.bindAddr,  configOptions.bindPort);
+      int err = dumpPlayerInit(&session.player, &playerCfg);
+      if(0 != err)
+      {
+         fprintf(stderr, "dumpPlayerInit() failed(%s)\n", strerror(err));
+         return err;
+      }
+      err = dumpPlayerStart(&session.player);
+      pause();
+   }
 
    int parentfd = socket(AF_INET, SOCK_STREAM, 0);
    if (parentfd < 0)

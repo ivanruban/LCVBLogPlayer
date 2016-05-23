@@ -47,25 +47,12 @@ struct sniff_ip {
 #define IP_HL(ip)    (((ip)->ip_vhl) & 0x0f)
 #define IP_V(ip)     (((ip)->ip_vhl) >> 4)
 
-struct sniff_rtp
-{
-   unsigned int cc:4;        /* CSRC count */
-   unsigned int x:1;         /* header extension flag */
-   unsigned int p:1;         /* padding flag */
-   unsigned int version:2;   /* protocol version */
-   unsigned int pt:7;        /* payload type */
-   unsigned int m:1;         /* marker bit */
-   unsigned int seq:16;      /* sequence number */
-   uint32_t ts;               /* timestamp */
-   uint32_t ssrc;             /* synchronization source */
-};
-
 struct sniff_udp_rtp {
    uint16_t sport;
    uint16_t dport;
    uint16_t length;
    uint16_t checksum;
-   sniff_rtp rtp;
+   rtpHeader rtp;
 };
 
 /**

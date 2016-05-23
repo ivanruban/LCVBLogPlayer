@@ -58,9 +58,9 @@ static void *dumpPlayerbackThread(void *arg)
 
    struct timespec startTimestap;
    struct timespec endTimestap;
+
    while(playbackActive)
    {
-      clock_gettime(CLOCK_MONOTONIC, &startTimestap);
 
       int err = fread(&packetHeader, 1, sizeof(eventLogPacket), ctx->fp);
       if(sizeof(eventLogPacket) != err)
@@ -89,6 +89,19 @@ static void *dumpPlayerbackThread(void *arg)
          fprintf(stderr, "Suspicious packet len: (%u)\n", packetHeader.len);
          break;
       }
+
+      clock_gettime(CLOCK_MONOTONIC, &endTimestap);
+      int timespend = timeDiffUsec(&endTimestap, &startTimestap);
+      if((0 != prevTs.tv_sec) && (0 != prevTs.tv_usec))
+      {
+         int time2nextEvent = timeDiffUsec((struct timeval *)&packetHeader, &prevTs);
+         int time2sleep = time2nextEvent - timespend;
+
+         if(1 < time2sleep)
+            usleep(time2sleep);
+      }
+      clock_gettime(CLOCK_MONOTONIC, &startTimestap);
+
       err = fread(buf, 1, packetHeader.len, ctx->fp);
       if(packetHeader.len != err)
       {
@@ -119,17 +132,7 @@ static void *dumpPlayerbackThread(void *arg)
          fprintf(stderr,"Unknown packet type(%u)\n", packetHeader.type);
          continue;
       }
-      clock_gettime(CLOCK_MONOTONIC, &endTimestap);
 
-      int timespend = timeDiffUsec(&endTimestap, &startTimestap);
-
-      if((0 != prevTs.tv_sec) && (0 != prevTs.tv_usec))
-      {
-         int time2nextEvent = timeDiffUsec((struct timeval *)&packetHeader, &prevTs);
-         int time2sleep = time2nextEvent - timespend;
-         if(1 < time2sleep)
-            usleep(time2sleep);
-      }
       prevTs.tv_sec = packetHeader.sec;
       prevTs.tv_usec = packetHeader.usec;
    }

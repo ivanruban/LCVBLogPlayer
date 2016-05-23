@@ -1,5 +1,11 @@
 /**
- *
+ * Debug utility to compare two RTP/CAN messages log in player's format(@see eventlog.h). It tries to find
+ * an message occurred in the first file in the second one and outputs its timestamp(in ms) and message type in
+ * CSV format.
+ *      <type>; <timestamp in first file in ms>; <timestamp in second file in ms>;
+ * Like:
+ *   RTP; 1458726003330; 1310797554;
+ * Output may processed with Excel to compute player timing performance.
 */
 
 #include <stdio.h>
@@ -16,21 +22,13 @@
 
 #include "eventlog.h"
 
-#define SWAP2(i)           (static_cast<uint16_t>((static_cast<uint16_t>(i) << 8) | (static_cast<uint16_t>(i) >> 8)))
-#define SWAP4(i)           (((i)<<24) | (((i)& 0x0000FF00)<<8) | (((i)& 0x00FF0000)>>8) | ((i)>>24) )
-
-struct sniff_rtp
+static uint64_t timeval2ms(struct timeval *a)
 {
-   unsigned int cc:4;        /* CSRC count */
-   unsigned int x:1;         /* header extension flag */
-   unsigned int p:1;         /* padding flag */
-   unsigned int version:2;   /* protocol version */
-   unsigned int pt:7;        /* payload type */
-   unsigned int m:1;         /* marker bit */
-   unsigned int seq:16;      /* sequence number */
-   uint32_t ts;               /* timestamp */
-   uint32_t ssrc;             /* synchronization source */
-};
+   uint64_t res = a->tv_sec * 1000;
+   res+=a->tv_usec/1000;
+
+   return  res;
+}
 
 int searchForPacket(FILE *file, eventLogPacket *header, const char* pkt, struct timeval *ts)
 {
@@ -56,7 +54,6 @@ int searchForPacket(FILE *file, eventLogPacket *header, const char* pkt, struct 
       err = fread(buf, 1, packetHeader.len, file);
       if(packetHeader.len != err)
       {
-         fprintf(stderr, "fread() failed(%i)\n", err);
          break;
       }
 
@@ -67,117 +64,124 @@ int searchForPacket(FILE *file, eventLogPacket *header, const char* pkt, struct 
 
       if(PACKET_TYPE_RTP == packetHeader.type)
       {
-         sniff_rtp *a = (sniff_rtp *)pkt;
-         sniff_rtp *b = (sniff_rtp *)buf;
-         if(SWAP4(a->ts) == SWAP4(b->ts))
+         rtpHeader *a = (rtpHeader *)pkt;
+         rtpHeader *b = (rtpHeader *)buf;
+         if(a->ts == b->ts)
          {
             ts->tv_sec = packetHeader.sec;
             ts->tv_usec = packetHeader.usec;
             return 0;
          }
-         else
+      }
+      else if(PACKET_TYPE_CAN == packetHeader.type)
+      {
+         if(0 == memcmp(pkt, buf, sizeof(canEvent)))
          {
-            printf("%u - %u\n", SWAP4(a->ts), SWAP4(b->ts));
+            ts->tv_sec = packetHeader.sec;
+            ts->tv_usec = packetHeader.usec;
+            return 0;
          }
       }
    }
    return -1;
 }
 
-/**
- * Calculate time difference in microseconds
- */
-static int timeDiffUsec(struct timeval *a, struct timeval *b)
+void usage(const char *name)
 {
-   struct timeval res;
-   timersub(a, b, &res);
-
-   return  res.tv_sec * 1e6 + res.tv_usec;
+   printf("Usage: %s original_dump.bin recollected_dump.bin\n", name);
+   exit(EXIT_FAILURE);
 }
 
 int main(int argc, char **argv)
 {
-   if(argc != 3)
+   if(argc < 3)
    {
-      printf("Usage: %s dump1.bin dump2.bin\n", argv[0]);
-      return EXIT_FAILURE;
-   }
-   const char *afname = argv[1];
-   const char *bfname = argv[2];
-
-   FILE *a;
-   a = fopen(afname, "r");
-   if (a == NULL)
-   {
-      fprintf(stderr, "Unable to open the file %s(%s)\n", afname, strerror(errno));
+      usage(argv[0]);
       return EXIT_FAILURE;
    }
 
-   FILE *b;
-   b = fopen(bfname, "r");
-   if (b == NULL)
+   const char *originalDumpName = argv[1];
+   const char *recollectedDumpName = argv[2];
+
+   FILE *originalDump;
+   originalDump = fopen(originalDumpName, "r");
+   if (originalDump == NULL)
    {
-      fprintf(stderr, "Unable to open the file %s(%s)\n", bfname, strerror(errno));
-      fclose(a);
+      fprintf(stderr, "Unable to open the file %s(%s)\n", originalDumpName, strerror(errno));
       return EXIT_FAILURE;
    }
-   fseek(a, sizeof(eventLogHeader), SEEK_SET);
-   fseek(b, sizeof(eventLogHeader), SEEK_SET);
 
-   char bufA[2000];
-   struct timeval prevTSA = {0,0};
-   struct timeval prevTSB = {0,0};
+   /*
+    * If CAN and RTP packets are interleaved message order may be changed.
+    * I.e. message CAN which originally was before an RTP one may followed
+    * after that in a recreated log. To resolve this issue two descriptors are opened for CAN and
+    * RTP message searching. So that each type are searched independently.
+   */
+   FILE *recollectedDumpRTP;
+   FILE *recollectedDumpCAN;
+   recollectedDumpRTP = fopen(recollectedDumpName, "r");
+   recollectedDumpCAN = fopen(recollectedDumpName, "r");
+   if (recollectedDumpRTP == NULL)
+   {
+      fprintf(stderr, "Unable to open the file %s(%s)\n", recollectedDumpName, strerror(errno));
+      fclose(originalDump);
+      return EXIT_FAILURE;
+   }
+
+   fseek(originalDump, sizeof(eventLogHeader), SEEK_SET);
+   fseek(recollectedDumpRTP, sizeof(eventLogHeader), SEEK_SET);
+   fseek(recollectedDumpCAN, sizeof(eventLogHeader), SEEK_SET);
+
+   char buf[2000];
    eventLogPacket packetHeader;
-   for(int i=0;;i++)
+   for(;;)
    {
-      int err = fread(&packetHeader, 1, sizeof(eventLogPacket), a);
+      int err = fread(&packetHeader, 1, sizeof(eventLogPacket), originalDump);
       if(sizeof(eventLogPacket) != err)
       {
-         if(feof(a))
+         if(!feof(originalDump))
          {
-            printf("end of file a!\n");
+            fprintf(stderr, "fread() failed(%i)\n", err);
          }
-         fprintf(stderr, "fread() failed(%i)\n", err);
          break;
       }
 
-      if(packetHeader.len > sizeof(bufA))
+      if(packetHeader.len > sizeof(buf))
       {
          fprintf(stderr, "Suspicious packet len: (%u)\n", packetHeader.len);
          break;
       }
-      err = fread(bufA, 1, packetHeader.len, a);
+      err = fread(buf, 1, packetHeader.len, originalDump);
       if(packetHeader.len != err)
       {
          fprintf(stderr, "fread() failed(%i)\n", err);
          break;
       }
-
-      if(PACKET_TYPE_RTP != packetHeader.type)
+      struct timeval ts;
+      const char *busName;
+      if(PACKET_TYPE_CAN == packetHeader.type)
       {
-         continue;
-      }
-
-      struct timeval tsB;
-      err = searchForPacket(b, &packetHeader, bufA, &tsB);
-      if(0 == err)
-      {
-         int diff = abs(timeDiffUsec((struct timeval *)&packetHeader, &prevTSA) - timeDiffUsec(&tsB, &prevTSB));
-         printf("%i  %li.%li -> %li.%li(%i)\n", i, packetHeader.sec, packetHeader.usec, tsB.tv_sec, tsB.tv_usec, diff);
+         busName = "CAN";
+         err = searchForPacket(recollectedDumpCAN, &packetHeader, buf, &ts);
       }
       else
       {
-         printf("Packet %i wasn't found!\n", i);
+         busName = "RTP";
+         err = searchForPacket(recollectedDumpRTP, &packetHeader, buf, &ts);
+      }
+      if(0 == err)
+      {
+         printf("%s; %li; %li;\n", busName, timeval2ms((struct timeval *)&packetHeader), timeval2ms(&ts));
+      }
+      else
+      {
+         printf("Packet wasn't found!\n");
          break;
       }
-      prevTSA.tv_sec = packetHeader.sec;
-      prevTSA.tv_usec= packetHeader.usec;
-
-      prevTSB.tv_sec = tsB.tv_sec;
-      prevTSB.tv_usec= tsB.tv_usec;
    }
 
-   fclose(a);
-   fclose(b);
+   fclose(originalDump);
+   fclose(recollectedDumpRTP);
+   fclose(recollectedDumpCAN);
    return EXIT_SUCCESS;
 }

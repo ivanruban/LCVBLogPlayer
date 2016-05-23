@@ -2,23 +2,18 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
-
+#include <errno.h>
 #include <string.h>
 
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/time.h>
-#include <fcntl.h>
 
 #include <net/if.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 
 #include <linux/can.h>
 #include <linux/can/raw.h>
-
-#include <errno.h>
 
 #include "eventlog.h"
 #include "canSender.h"
