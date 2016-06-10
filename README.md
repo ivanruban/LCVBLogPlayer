@@ -61,7 +61,7 @@ Performance verifying methodology
 5. Run logcmp pointing logplayer's log as a first argument and the logdump output as the second one
    ./logcmp 23022016.bin dump.bin > 23022016.csv
    logcmp ouputs a line for each message in the first dump in the following format: 
-         <type>; <timestamp in first file in ms>; <timestamp in second file in ms>;   
+         type; timestamp in first file in ms; timestamp in second file in ms;   
    Like:
          RTP; 1458726003330; 1310797554;
          ...

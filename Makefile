@@ -7,10 +7,12 @@ SERVER_LIBRARY = -pthread
 
 FLAGS = -Wall -Os
 
+PARSER_SOURCES = logplayer.cpp dumpplayer.cpp rtpSender.cpp canSender.cpp canLogFile.cpp mixedLogFile.cpp multiLogReader.cpp
+
 all: logplayer logparser logcmp logdump
 
-logplayer : logplayer.cpp dumpplayer.cpp rtpSender.cpp canSender.cpp
-	$(GCC) -o logplayer logplayer.cpp dumpplayer.cpp rtpSender.cpp  canSender.cpp  $(FLAGS) $(INCLUDE) $(SERVER_LIBRARY)
+logplayer : $(PARSER_SOURCES) 
+	$(GCC) -o logplayer $(PARSER_SOURCES)  $(FLAGS) $(INCLUDE) $(SERVER_LIBRARY)
 
 logparser : logparser.cpp
 	$(GCC) -o logparser logparser.cpp  $(FLAGS) $(INCLUDE) $(PARSER_LIBRARY)

@@ -9,6 +9,9 @@
 
 #include <pthread.h>
 
+#include "canLogFile.h"
+#include "mixedLogFile.h"
+
 #include "rtpSender.h"
 #include "canSender.h"
 
@@ -18,7 +21,8 @@
  */
 typedef struct
 {
-   FILE *fp;
+   CanLogFile canLog;
+   MixedLogFile rtpLog;
    pthread_t playbackThread;
    rtpSender rtpSend;
    canSender canSend;
@@ -27,7 +31,8 @@ typedef struct
 
 typedef struct
 {
-   const char* fname;//evens log file name
+   const char* RTPfname;
+   const char* CANfname;
    const char* addr; //RTP client IP address
    int port;         //client UDP port for RTP streaming
    uint32_t ssrc;    //RTP: Synchronization source identifier uniquely identifies the source of a stream

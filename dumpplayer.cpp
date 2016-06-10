@@ -13,6 +13,7 @@
 
 #include "dumpplayer.h"
 #include "eventlog.h"
+#include "multiLogReader.h"
 
 
 /**
@@ -52,49 +53,40 @@ static void *dumpPlayerbackThread(void *arg)
 {
    dumpPlayer *ctx = (dumpPlayer *)arg;
 
-   eventLogPacket packetHeader;
-   char buf[2000];
+   std::vector<ILogFile*> fileList;
+   fileList.push_back(&ctx->canLog);
+   fileList.push_back(&ctx->rtpLog);
+
+   MultiLogReader reader(fileList);
+
+   packetType type;
+   char data[2000];
    timeval prevTs = {0, 0};
+   timeval ts;
 
    struct timespec startTimestap;
    struct timespec endTimestap;
 
    while(playbackActive)
    {
-
-      int err = fread(&packetHeader, 1, sizeof(eventLogPacket), ctx->fp);
-      if(sizeof(eventLogPacket) != err)
+      int err = reader.read(type, ts,  data, sizeof(data));
+      if(-1 == err)
       {
-         if(feof(ctx->fp))
-         {
-            if(ctx->rewind)
-            {
-               printf("rewind dump log!\n");
-               prevTs.tv_sec = prevTs.tv_usec = 0;
-               fseek(ctx->fp, sizeof(eventLogHeader), SEEK_SET);
-               continue;
-            }
-            else
-            {
-               break;
-            }
-         }
-
-         fprintf(stderr, "fread() failed(%i)\n", err);
+         fprintf(stderr, "reader.read() failed(%i)\n", errno);
          break;
       }
-
-      if(packetHeader.len > sizeof(buf))
+      if(0 == err)
       {
-         fprintf(stderr, "Suspicious packet len: (%u)\n", packetHeader.len);
+         //@TODO process rewind
          break;
       }
+      int len = err;
 
       clock_gettime(CLOCK_MONOTONIC, &endTimestap);
       int timespend = timeDiffUsec(&endTimestap, &startTimestap);
       if((0 != prevTs.tv_sec) && (0 != prevTs.tv_usec))
       {
-         int time2nextEvent = timeDiffUsec((struct timeval *)&packetHeader, &prevTs);
+         int time2nextEvent = timeDiffUsec(&ts, &prevTs);
          int time2sleep = time2nextEvent - timespend;
 
          if(1 < time2sleep)
@@ -102,25 +94,18 @@ static void *dumpPlayerbackThread(void *arg)
       }
       clock_gettime(CLOCK_MONOTONIC, &startTimestap);
 
-      err = fread(buf, 1, packetHeader.len, ctx->fp);
-      if(packetHeader.len != err)
+      if(PACKET_TYPE_RTP == type)
       {
-         fprintf(stderr, "fread() failed(%i)\n", err);
-         break;
-      }
-
-      if(PACKET_TYPE_RTP == packetHeader.type)
-      {
-         err = rtpSenderSend(&ctx->rtpSend, buf, packetHeader.len);
+         err = rtpSenderSend(&ctx->rtpSend, data, len);
          if(0 != err)
          {
             fprintf(stderr,"rtpSenderSend() failed(%s)\n", strerror(err));
             break;
          }
       }
-      else if (PACKET_TYPE_CAN == packetHeader.type)
+      else if (PACKET_TYPE_CAN == type)
       {
-         err = canSenderSend(&ctx->canSend, buf, packetHeader.len);
+         err = canSenderSend(&ctx->canSend, data, len);
          if(0 != err)
          {
             fprintf(stderr,"canSenderSend() failed(%s)\n", strerror(err));
@@ -129,12 +114,10 @@ static void *dumpPlayerbackThread(void *arg)
       }
       else
       {
-         fprintf(stderr,"Unknown packet type(%u)\n", packetHeader.type);
+         fprintf(stderr,"Unknown packet type(%u)\n", type);
          continue;
       }
-
-      prevTs.tv_sec = packetHeader.sec;
-      prevTs.tv_usec = packetHeader.usec;
+      prevTs = ts;
    }
 
    return 0;
@@ -184,35 +167,27 @@ int dumpPlayerInit(dumpPlayer *ctx, dumpPlayerCfg *cfg)
 {
    ctx->rewind = cfg->rewind;
 
-   if((ctx->fp = fopen(cfg->fname, "r")) == NULL)
+   int err = ctx->canLog.open(cfg->CANfname);
+   if(0 != err)
    {
-      fprintf(stderr, "Unable to open the file %s(%s)\n", cfg->fname, strerror(errno));
-      return errno;
+      fprintf(stderr, "canLog.open(%s) failed(%s)\n", cfg->CANfname, strerror(err));
+      return err;
    }
 
-   eventLogHeader logHeader;
-   int err = fread(&logHeader, 1, sizeof(eventLogHeader), ctx->fp);
-   if(sizeof(eventLogHeader) != err)
+   err = ctx->rtpLog.open(cfg->RTPfname);
+   if(0 != err)
    {
-      fprintf(stderr, "fread() failed(%i)\n", err);
-      fclose(ctx->fp);
-      ctx->fp = NULL;
-      return EINVAL;
-   }
-   if((0 != memcmp(logHeader.id, "ELOG", sizeof(logHeader.id))) || (1 != logHeader.version))
-   {
-      fprintf(stderr, "Incorrect log file format\n");
-      fclose(ctx->fp);
-      ctx->fp = NULL;
-      return EINVAL;
+      fprintf(stderr, "rtpLog.open(%s) failed(%s)\n", cfg->RTPfname, strerror(err));
+      ctx->canLog.close();
+      return err;
    }
 
    err = rtpSenderInit(&ctx->rtpSend, cfg->addr, cfg->port, cfg->ssrc);
    if(0 != err)
    {
       fprintf(stderr, "rtpSenderInit() failed(%s)\n", strerror(err));
-      fclose(ctx->fp);
-      ctx->fp = NULL;
+      ctx->canLog.close();
+      ctx->rtpLog.close();
       return err;
    }
 
@@ -220,8 +195,8 @@ int dumpPlayerInit(dumpPlayer *ctx, dumpPlayerCfg *cfg)
    if(0 != err)
    {
       fprintf(stderr, "canSenderInit() failed(%s)\n", strerror(err));
-      fclose(ctx->fp);
-      ctx->fp = NULL;
+      ctx->canLog.close();
+      ctx->rtpLog.close();
       rtpSenderDeinit(&ctx->rtpSend);
       return err;
    }
@@ -234,11 +209,8 @@ int dumpPlayerInit(dumpPlayer *ctx, dumpPlayerCfg *cfg)
  */
 void dumpPlayerDeinit(dumpPlayer *ctx)
 {
-   if(NULL != ctx->fp)
-   {
-      fclose(ctx->fp);
-      ctx->fp = NULL;
-   }
+   ctx->canLog.close();
+   ctx->rtpLog.close();
    rtpSenderDeinit(&ctx->rtpSend);
    canSenderDeinit(&ctx->canSend);
 }

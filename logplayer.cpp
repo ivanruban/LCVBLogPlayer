@@ -22,7 +22,7 @@
 void usage(const char *name)
 {
    printf("Usage: %s [-v] [-r] [-d can_device_path] [-t can_frame_type] "
-           "[-p bind_port] [-i bind_addr] log_file\n"
+           "[-p bind_port] [-i bind_addr] rtplog_file.bin canlog_file.log\n"
            "  -v increase logging verbosity level\n"
            "  -r rewind log file once end of file is reached\n"
            "  -d can device name to send a CAN message(default: can0)\n"
@@ -31,10 +31,9 @@ void usage(const char *name)
            "  -i ip address to bind (default: INADDR_ANY)\n"
            , name);
 
-   printf("Like: %s -r -i 127.0.01 -p 8554 log.bin\n", name);
+   printf("Like: %s -r -i 127.0.01 -p 8554 camera.bin CAN.log\n", name);
    exit(EXIT_FAILURE);
 }
-
 
 /**
  * Parses the input RTSP request and extracts the command sequence number (CSeq:) value.
@@ -54,7 +53,8 @@ int getRequestClientPort(const char *data, uint32_t *port1, uint32_t *port2);
 struct playerCfg
 {
    const char *bindAddr;
-   const char *logFile;
+   const char *RTPlogFile;
+   const char *CANlogFile;
    int bindPort;
    const char* canDeviceName;
    canFrameType canType;
@@ -211,7 +211,7 @@ int playCmdHandler (const char *data, const int size, int fd)
       return errno;
    }
 
-   dumpPlayerCfg playerCfg = {configOptions.logFile, session.clientIp, (int)session.port1, session.ssrc
+   dumpPlayerCfg playerCfg = {configOptions.RTPlogFile, configOptions.CANlogFile, session.clientIp, (int)session.port1, session.ssrc
          , configOptions.canDeviceName, configOptions.canType, configOptions.rewindLog
    };
 
@@ -338,6 +338,9 @@ int main(int argc, char **argv)
    configOptions.verbosity = 0;
    configOptions.rewindLog = 0;
 
+   configOptions.RTPlogFile = NULL;
+   configOptions.CANlogFile = NULL;
+
    //if set - don't start rtps server, but just streaming on the given address and port
    bool forcePlayback = false;
 
@@ -383,21 +386,22 @@ int main(int argc, char **argv)
        }
    }
 
-   if (optind >= argc)
+   if (optind+2 != argc)
    {
       usage(argv[0]);
       return EXIT_FAILURE;
    }
-   configOptions.logFile = argv[optind];
+   configOptions.RTPlogFile = argv[optind];
+   configOptions.CANlogFile = argv[optind+1];
 
    //it is debug feature for player performance testing with logdump/logcmp utilities
    if(forcePlayback)
    {
-      dumpPlayerCfg playerCfg = {configOptions.logFile, configOptions.bindAddr, configOptions.bindPort, 11223344
+      dumpPlayerCfg playerCfg = {configOptions.RTPlogFile, configOptions.CANlogFile, configOptions.bindAddr, configOptions.bindPort, 11223344
             , configOptions.canDeviceName, configOptions.canType, configOptions.rewindLog
       };
 
-      printf("Stream file %s to %s:%i\n", configOptions.logFile, configOptions.bindAddr,  configOptions.bindPort);
+      printf("Stream file %s to %s:%i\n", configOptions.RTPlogFile, configOptions.bindAddr,  configOptions.bindPort);
       int err = dumpPlayerInit(&session.player, &playerCfg);
       if(0 != err)
       {
